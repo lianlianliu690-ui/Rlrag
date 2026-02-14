@@ -55,12 +55,12 @@ def parse_args():
     parser.add_argument(
         "--deps_path", 
         help="path to dependencies", 
-        default="/CT/GestureSynth1/work/GestureGPT/GestureRep/deps/" # TODO: change this before release
+        default="/home/mas-liu.lianlian/SynTalker/datasets/hub/" # TODO: change this before release
         ) 
     parser.add_argument(
         "--dataset_path",
         help="path to the dataset which contains eval_model and vel_path",
-        default="/CT/GestureSynth1/work/GestureGPT/PantoMatrix/BEAT2/beat_english_v2.0.0/" #TODO: change this before release
+        default="/Dataset/mas-liu.lianlian/beat_v2.0.0/beat_english_v2.0.0/" #TODO: change this before release
     )
     parser.add_argument(
         "--e_path", 
@@ -75,7 +75,7 @@ def parse_args():
     parser.add_argument(
         "--test_cfg",
         help="path to the test config file",
-        default="/CT/GestureSynth1/work/GestureGPT/PantoMatrix/BEAT2/beat_english_v2.0.0/beat_test_cfg.py" # TODO: change this before release
+        default="/home/mas-liu.lianlian/RLrag/experiments/base_beatx_len150fps15_finalweights/basegesture_len150_beat.py" # TODO: change this before release
     )
     parser.add_argument("--speaker_specific", type=str, default=None, help="speaker specific eval")
     
@@ -115,7 +115,7 @@ class Evaluator:
         self.align_mask = 0
         # self.alignmenter
         self.smplx_model = smplx.create(
-            self.args.deps_path+"smplx_models/", 
+            "/home/mas-liu.lianlian/SynTalker/datasets/hub/smplx_models/", 
             model_type='smplx',
             gender='NEUTRAL_2020', 
             use_face_contour=False,

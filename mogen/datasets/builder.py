@@ -4,6 +4,7 @@ from functools import partial
 from typing import Optional, Union
 
 import numpy as np
+import torch
 from mmcv.parallel import collate
 from mmcv.runner import get_dist_info
 from mmcv.utils import Registry, build_from_cfg
@@ -46,7 +47,7 @@ def build_dataset(
     else:
         # dataset = build_from_cfg(cfg, DATASETS, default_args)
         # breakpoint()
-        dataset_name = cfg.pop("type")
+        dataset_name = cfg.pop("type")  # 移除"type"并获取类型名称
         dataset = DATASETS.get(dataset_name)(**cfg)
 
     return dataset
@@ -56,6 +57,20 @@ def beatx_collate_fn(batch):
     """Collate function for BEAT dataset."""
     # breakpoint()
     # print("batch", [b["gesture_labels"] for b in batch])
+
+    motion_h3d_list = []
+    for sample in batch:
+        motion_h3d = sample["motion_h3d"]
+        if motion_h3d.shape[0] < 150:
+            # 计算需要填充的长度
+            pad_length = 150 - motion_h3d.shape[0]
+            # 使用最后一个时间步的数据进行padding
+            padding = motion_h3d[-1:].repeat(pad_length, 1)
+            # 拼接原始数据和padding
+            padded_motion_h3d = torch.cat([motion_h3d, padding], dim=0)
+            motion_h3d_list.append(padded_motion_h3d)
+        else:
+            motion_h3d_list.append(motion_h3d)
     adapted_batch = {
         "motion": collate([sample["motion"] for sample in batch]),
         "motion_upper": collate([sample["motion_upper"] for sample in batch]),
@@ -85,12 +100,14 @@ def beatx_collate_fn(batch):
         "sem_score": collate([sample["sem_score"] for sample in batch]),
         "discourse": [sample["discourse"] for sample in batch],
         "prominence": [sample["prominence"] for sample in batch],
+        "motion_h3d": collate(motion_h3d_list),
+
+        "abs_start_time": [sample["abs_start_time"] for sample in batch],
         
         "sample_idx": [sample["sample_idx"] for sample in batch],
         "sample_name": [sample["sample_name"] for sample in batch],
     }
     return adapted_batch
-
 
 def build_dataloader(
     dataset: Dataset,
@@ -143,6 +160,12 @@ def build_dataloader(
         else None
     )
 
+    # # ================= 强制 Debug 代码 =================
+    # print("⚠️ [Builder] 强制修改 num_workers=0, persistent_workers=False")
+    # num_workers = 0          # 强制单进程
+    
+    # # ================================================
+
     data_loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -153,6 +176,8 @@ def build_dataloader(
         shuffle=shuffle,
         worker_init_fn=init_fn,
         persistent_workers=persistent_workers,
+        # persistent_workers=False,
+        
         **kwargs
     )
 

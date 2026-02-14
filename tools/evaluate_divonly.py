@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument(
         "--deps_path", 
         help="path to dependencies", 
-        default="/CT/GestureSynth1/work/GestureGPT/GestureRep/deps/" # TODO: change this before release
+        default="/home/mas-liu.lianlian/SynTalker/datasets/hub/" # TODO: change this before release
         ) 
     parser.add_argument(
         "--dataset_path",

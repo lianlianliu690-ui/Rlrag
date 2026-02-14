@@ -1,4 +1,4 @@
-_base_ = ["../_base_/datasets/beatx_len150_15fps.py"]
+_base_ = ["../_base_/datasets/beatx_len150_15fps.py"]  # 继承自基础文件的配置
 
 # checkpoint saving
 checkpoint_config = dict(interval=2)
@@ -25,7 +25,7 @@ custom_hooks = [
     # dict(type="BERT_FreezeHook"),
     dict(
         type="DatabaseSaveHook",
-        save_dir="/CT/GestureSynth1/work/DiscourseAwareGesture/RAGGesture_BEATX/experiments/retrieval_dicts",
+        save_dir="/home/mas-liu.lianlian/RAG-Gesture/experiments/retrieval_dicts",
     ),
 ]
 
@@ -83,11 +83,11 @@ model = dict(
             time_embed_dim=time_embed_dim,
         ),
         vae_cfg=dict(
-            upper_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/0903_020101_gesture_lexicon_transformer_vae_upper_allspk_len256_l8h4_fchunksize15/0903_020101_gesture_lexicon_transformer_vae_upper_allspk_len256_l8h4_fchunksize15.yaml",
+            upper_cfg = "/home/mas-liu.lianlian/RAG-Gesture/experiments/vae/0903_020101_gesture_lexicon_transformer_vae_upper_allspk_len256_l8h4_fchunksize15/0903_020101_gesture_lexicon_transformer_vae_upper_allspk_len256_l8h4_fchunksize15.yaml",
             # lower_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/0909_131733_gesture_lexicon_transformer_vae_lower_allspk_len10s_l8h4_fchunksize15/0909_131733_gesture_lexicon_transformer_vae_lower_allspk_len10s_l8h4_fchunksize15.yaml",
-            lowertrans_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/1031_142417_gesture_lexicon_transformer_vae_lowerplustrans_allspk_len10s_l8h8_fchunksize15_run2/1031_142417_gesture_lexicon_transformer_vae_lowerplustrans_allspk_len10s_l8h8_fchunksize15_run2.yaml",
-            face_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/0909_130750_gesture_lexicon_transformer_vae_face_allspk_len10s_l8h4_fchunksize15/0909_130750_gesture_lexicon_transformer_vae_face_allspk_len10s_l8h4_fchunksize15.yaml",
-            hands_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/0909_132647_gesture_lexicon_transformer_vae_hands_allspk_len10s_l8h4_fchunksize15/0909_132647_gesture_lexicon_transformer_vae_hands_allspk_len10s_l8h4_fchunksize15.yaml",
+            lowertrans_cfg = "/home/mas-liu.lianlian/RAG-Gesture/experiments/vae/1031_142417_gesture_lexicon_transformer_vae_lowerplustrans_allspk_len10s_l8h8_fchunksize15_run2/1031_142417_gesture_lexicon_transformer_vae_lowerplustrans_allspk_len10s_l8h8_fchunksize15_run2.yaml",
+            face_cfg = "/home/mas-liu.lianlian/RAG-Gesture/experiments/vae/0909_130750_gesture_lexicon_transformer_vae_face_allspk_len10s_l8h4_fchunksize15/0909_130750_gesture_lexicon_transformer_vae_face_allspk_len10s_l8h4_fchunksize15.yaml",
+            hands_cfg = "/home/mas-liu.lianlian/RAG-Gesture/experiments/vae/0909_132647_gesture_lexicon_transformer_vae_hands_allspk_len10s_l8h4_fchunksize15/0909_132647_gesture_lexicon_transformer_vae_hands_allspk_len10s_l8h4_fchunksize15.yaml",
             # transl_cfg = "/CT/GestureSynth1/work/GestureGPT/GestureRep/experiments/1001_173313_gesture_lexicon_transformer_vae_trans_allspk_len10s_l8h8_fchunksize15_xznorm_ldim512_lowkl/1001_173313_gesture_lexicon_transformer_vae_trans_allspk_len10s_l8h8_fchunksize15_xznorm_ldim512_lowkl.yaml",
             latent_dim=latent_dim,
             frame_chunk_size=frame_chunk_size,
@@ -127,8 +127,9 @@ model = dict(
             num_heads=num_heads,
             ff_size=ff_size,
             dropout=dropout,
-            lmdb_paths="/scratch/inf0/user/mmughal/DiscourseAwareGesture/retrieval_cache_stratified/",
-            new_lmdb_cache=False,
+            lmdb_paths="/Dataset4D/public/mas-liu.lianlian/output/RAGesture/data_h3d/",
+            kg_path='/Dataset4D/public/mas-liu.lianlian/output/RAGesture/rl_kg/graph_rag/knowledge_graph_final_clean.gexf',  # 请确保路径正确
+            new_lmdb_cache= True, 
             stratified_db_creation=True,
             stratification_interval=15, # (max_seq_len // data_stride) // 2) = 150 // 5 // 2 = 15
             ffn_cfg=dict(

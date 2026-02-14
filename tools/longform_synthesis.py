@@ -5,6 +5,10 @@ import os.path as osp
 import mmcv
 import copy
 import numpy as np
+# 补丁: 解决 numpy float 问题
+if not hasattr(np, 'float'):
+    np.float = float
+
 import torch
 from mogen.models import build_architecture
 from mogen.datasets import build_dataset, build_dataloader
@@ -24,7 +28,7 @@ def parse_args():
     parser.add_argument("config", help="test config file path")
     parser.add_argument("checkpoint", help="checkpoint file")
     parser.add_argument("--retrieval_method", help="retrieval method", default="discourse")
-    parser.add_argument("--out", help="output directory", default="./results/")
+    parser.add_argument("--out", help="output directory", default="/Dataset4D/public/mas-liu.lianlian/output/RAGesture/result/")
     parser.add_argument("--use_retrieval", help="whether to use retrieval for testing", action="store_true")
     parser.add_argument("--outpaint", help="whether to outpaint the motion using the base model", action="store_true")
     parser.add_argument("--use_inversion", help="whether to use inversion to inject retr motion", action="store_true")
@@ -58,19 +62,19 @@ def parse_args():
     if "LOCAL_RANK" not in os.environ:
         os.environ["LOCAL_RANK"] = str(args.local_rank)
     return args
-
+# ==================提取文本特征的函数。返回文本内容和对应的特征向量===================
 def get_text_feature(bert_model, tokenizer, datasetobj, textsegs):
     # assert len(textsegs) == 1, "Only one text segment is supported for now"
-    merged_seg_text = datasetobj.merge_disco_textsegs(textsegs)
+    merged_seg_text = datasetobj.merge_disco_textsegs(textsegs) #调用数据集对象的 merge_disco_textsegs 方法来合并离散的文本段落
     text_data = [seg[1] for seg in merged_seg_text]
     # breakpoint()
     assert len(text_data) == len(merged_seg_text)
-    sentence = " ".join(text_data)
+    sentence = " ".join(text_data)  #将所有文本内容连接成一个完整的句子，用空格分隔。
 
     layers = [-4, -3, -2, -1]
-    encoded = tokenizer.encode_plus(sentence, return_tensors="pt").to("cuda")
+    encoded = tokenizer.encode_plus(sentence, return_tensors="pt").to("cuda")   #使用tokenizer对整个句子进行编码，并将结果移到GPU上
     with torch.no_grad():
-        output = bert_model(**encoded)
+        output = bert_model(**encoded)      #通过BERT模型获取输出
     # Get all hidden states
     states = output.hidden_states
     # Stack and sum all requested layers as reprsentation (last four by default)
@@ -200,7 +204,7 @@ def main():
     #
     # breakpoint()
     # cfg.data.test.training_speakers = [2]   
-    breakpoint()
+    # breakpoint()
     test_dataset = build_dataset(cfg.data.test)
 
     body_upper_mask = test_dataset.upper_mask
@@ -231,8 +235,8 @@ def main():
     if args.use_inversion and args.visualize_inversion:
         os.makedirs(osp.join(exp_dir, "inversion"), exist_ok=True)
 
-    overlap_framelen = model.module.model.frame_chunk_size
-    motion_seqlen = cfg.max_seq_len
+    overlap_framelen = model.module.model.frame_chunk_size      #15
+    motion_seqlen = cfg.max_seq_len  # 150
     
 
     for i, data in enumerate(test_dataloader):
@@ -243,28 +247,29 @@ def main():
 
         gt_audio = data["raw_audio"].numpy()
 
-        gt_sample_name = data["sample_name"]
+        gt_sample_name = data["sample_name"]  # 样本名：2_scott_0_65_65
         
-        gt_gesture_labels = data["gesture_labels"]
+        gt_gesture_labels = data["gesture_labels"] # 
+        full_text_content = data["raw_word"][0]
         # breakpoint()
 
-        if "_" in args.retrieval_method:
+        if "_" in args.retrieval_method:  # llm_retrieval
             data["retrieval_method"] = args.retrieval_method.split("_")[0]
         else:
             data["retrieval_method"] = args.retrieval_method
 
-        if data["sample_name"][0].replace("/0", "") not in ["17_itoi_0_1_1",  "17_itoi_0_2_2",  "2_scott_0_65_65",  "5_stewart_0_1_1", "15_carlos_0_111_111", "17_itoi_0_73_73", "25_goto_0_87_87", "6_carla_0_73_73", "17_itoi_0_2_2", "27_yingqing_0_65_65"]:
-            continue
+        # if data["sample_name"][0].replace("/0", "") not in ["17_itoi_0_1_1",  "17_itoi_0_2_2",  "2_scott_0_65_65",  "5_stewart_0_1_1", "15_carlos_0_111_111", "17_itoi_0_73_73", "25_goto_0_87_87", "6_carla_0_73_73", "17_itoi_0_2_2", "27_yingqing_0_65_65"]:
+        #     continue # 样本过滤条件，用于只处理特定的数据样本，跳过其他样本
         
 
         # make subsets of the data
-        
-        sample_motion_len = data["motion"].shape[1]
-        chunk_starts = [0] + list(range(motion_seqlen - overlap_framelen, sample_motion_len, motion_seqlen - overlap_framelen))
+        # [1, 780, 165] （bs, seq_len, dim）
+        sample_motion_len = data["motion"].shape[1] # 780
+        chunk_starts = [0] + list(range(motion_seqlen - overlap_framelen, sample_motion_len, motion_seqlen - overlap_framelen))    # 分块头
         # chunk_starts = [i for i in chunk_starts if i + motion_seqlen <= sample_motion_len]
-        chunk_ends = [i + motion_seqlen for i in chunk_starts]
+        chunk_ends = [i + motion_seqlen for i in chunk_starts] # 分块尾
         ori_audio = copy.deepcopy(data["raw_audio"])
-        if chunk_ends[-1] > sample_motion_len:
+        if chunk_ends[-1] > sample_motion_len:  #处理当最后一个数据块超出原始序列长度时的填充逻辑（零填充）
             # breakpoint()
             remainder = chunk_ends[-1] - sample_motion_len
             data["motion"] = torch.cat([data["motion"], torch.zeros((1, remainder, data["motion"].shape[2])).to(data["motion"].device)], dim=1)
@@ -300,7 +305,7 @@ def main():
         for cidx, (chunk_start, chunk_end) in enumerate(zip(chunk_starts, chunk_ends)):
             # if cidx == len(chunk_starts) - 1:
             #     breakpoint()
-
+            # ===============提取每个数据块（chunk）的数据并构建相应的数据字典===================
             chunk_timestart = chunk_start / cfg.motion_fps
             chunk_timeend = chunk_end / cfg.motion_fps
             chunk_data = dict()
@@ -311,10 +316,14 @@ def main():
             chunk_data["motion_hands"] = data["motion_hands"][:, chunk_start:chunk_end]
             chunk_data["motion_length"] = [motion_seqlen] * len(data["motion_length"])
             chunk_data["motion_mask"] = data["motion_mask"][:, chunk_start:chunk_end]
-            chunk_data["contact"] = data["contact"][:, chunk_start:chunk_end]
+            chunk_data["contact"] = data["contact"][:, chunk_start:chunk_end]   #用于存储**接触信息（contact information）**的变量 [1, 150, 4] (batch_size, sequence_length, num_contact_points)
             chunk_data["trans"] = data["trans"][:, chunk_start:chunk_end]
             chunk_data["facial"] = data["facial"][:, chunk_start:chunk_end]
             chunk_data["beta"] = data["beta"][:, chunk_start:chunk_end]
+
+            chunk_data["llm_full_context"] = full_text_content
+            
+            chunk_data["llm_focus_window"] = (chunk_start, chunk_end)
 
             
             assert chunk_data["motion"].shape[1] == motion_seqlen
@@ -328,47 +337,49 @@ def main():
 
             assert chunk_data["audio"].shape[1] == 499
             assert chunk_data["raw_audio"].shape[1] == 16000 * (motion_seqlen / cfg.motion_fps)
-            # breakpoint()
+            # ==========处理文本数据的切片和时间归一化============================================
             chunk_data["word"] = data["word"][:, chunk_start:chunk_end]
-            relevant_textsegs = []
-            for textseg in data["text_segments"][0]:
+            relevant_textsegs = []      #存储与当前块相关的文本片段
+            for textseg in data["text_segments"][0]:  #遍历所有文本段落，每个文本段的格式是：textseg[0] 是时间范围 [start_time, end_time] textseg[1] 是实际的文本内容
+
                 text_seg_start = textseg[0][0]
                 text_seg_end = textseg[0][1]
                 if text_seg_start >= chunk_timestart and text_seg_end <= chunk_timeend:
+                    #从绝对时间（相对于整个序列开始）转换为相对时间（相对于当前块开始）
                     new_textseg = [[text_seg_start - chunk_timestart, text_seg_end - chunk_timestart], textseg[1]]
                     relevant_textsegs.append(new_textseg)
             chunk_data["text_segments"] = [relevant_textsegs]
             chunktext, chunk_textfeatures = get_text_feature(data_bert_model, data_bert_tokenizer, train_dataset, relevant_textsegs)      
             chunk_data["raw_word"] = chunktext
-            chunk_data["text_features"] = chunk_textfeatures  
+            chunk_data["text_features"] = chunk_textfeatures   
 
             chunk_data["speaker_ids"] = data["speaker_ids"][:, chunk_start:chunk_end]
             chunk_data["sample_name"] = [data["sample_name"][0].replace("/0", f"/{cidx}")]
-
+            #=============处理手势标签的切片和时间归一化===========================================
             relevant_glabels = []
-            for glabel in data["gesture_labels"][0]:
+            for glabel in data["gesture_labels"][0]: #遍历所有手势标签，每个手势标签是一个字典，包含起始时间，结束时间，手势名称，相关word
                 glabel_start = glabel["start"]
                 glabel_end = glabel["end"]
-                if glabel_start >= chunk_timestart and glabel_end <= chunk_timeend:
+                if glabel_start >= chunk_timestart and glabel_end <= chunk_timeend: #只有完全在当前块时间范围内的手势标签才会被保留。
                     new_glabel = {"start": glabel_start - chunk_timestart, "end": glabel_end - chunk_timestart, "name": glabel["name"], 'word': glabel["word"]}
                     relevant_glabels.append(new_glabel)
             chunk_data["gesture_labels"] = [relevant_glabels]
-
+            #=========处理语义标签的切片和时间归一化===========================================
             relevent_discourse = []
             for disc in data["discourse"][0]:
-                conn = disc[0]
-                sense = disc[1]
-                arg1 = disc[2]
-                arg2 = disc[3]
+                conn = disc[0]      #连接词（connective）
+                sense = disc[1]     #关系意义（sense）
+                arg1 = disc[2]      #第一个论元（argument 1）
+                arg2 = disc[3]      #第二个论元（argument 2）
                 rel_start = disc[4]
                 rel_end = disc[5]
                 conn_start = disc[6]
                 conn_end = disc[7]
-                if rel_start >= chunk_timestart and rel_end <= chunk_timeend:
+                if rel_start >= chunk_timestart and rel_end <= chunk_timeend:   #   将话语关系的时间坐标从全局时间转换为局部时间（相对于当前块开始）
                     new_disc = (conn, sense, arg1, arg2, rel_start - chunk_timestart, rel_end - chunk_timestart, conn_start - chunk_timestart, conn_end - chunk_timestart)
                     relevent_discourse.append(new_disc)
             chunk_data["discourse"] = [relevent_discourse]
-
+            #=========处理重音/突出度（prominence）数据的切片和时间归一化===========================================
             relevent_prominence = []
             for prom in data["prominence"][0]:
                 prom_word = prom[0]
@@ -380,7 +391,7 @@ def main():
                     relevent_prominence.append(new_prom)
             chunk_data["prominence"] = [relevent_prominence]
 
-            chunk_data["sample_idx"] = [data["sample_idx"]] 
+            chunk_data["sample_idx"] = [data["sample_idx"]]     # 样本索引号
 
             chunk_data["retrieval_method"] = data["retrieval_method"]
             # breakpoint()
@@ -393,7 +404,7 @@ def main():
                     "inversion_start_time": args.inversion_start_time,
                     "visualize_inversion": args.visualize_inversion,
                     "insertion_guidance": args.use_insertion_guidance,
-                    "guidance_iters": args.guidance_iters,
+                    "guidance_iters": args.guidance_iters,  #控制在扩散过程的每个时间步中使用指导信号的强度。长度为50的列表，对应扩散过程的50个时间步  前45个时间步的值为0，表示不使用指导信号 后5个时间步的值从1到22递增，表示逐渐增加指导强度
                     "guidance_lr": args.guidance_lr,
                     "use_prev_latent": True,
                     "prev_latent": previous_latent,
@@ -792,4 +803,12 @@ def main():
 
 
 if __name__ == "__main__":
+    import debugpy
+    try:
+        # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+        debugpy.listen(("localhost", 9502))
+        print("Waiting for debugger attach")
+        debugpy.wait_for_client()
+    except Exception as e:
+      pass
     main()

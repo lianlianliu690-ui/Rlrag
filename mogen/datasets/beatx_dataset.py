@@ -3,7 +3,9 @@ import torch
 import math
 import smplx
 from attrdict import AttrDict
+
 from collections import defaultdict
+
 import json
 
 # import torch.distributed as dist
@@ -29,6 +31,9 @@ from .utils.beatx_utils import joints_list
 from .builder import DATASETS
 from mogen.utils import get_root_logger
 
+import pickle
+import pyarrow
+
 
 import time
 import soundfile as sf
@@ -42,7 +47,7 @@ class BEATXDataset(data.Dataset):
     def __init__(
         self,
         split,
-        build_cache=True,
+        build_cache= False,
         tiny=False,
         debug=False,
         **kwargs,
@@ -101,7 +106,7 @@ class BEATXDataset(data.Dataset):
 
         # select trainable joints
         self.smplx = smplx.create(
-            self.args.deps_path+"smplx_models/", 
+            "/home/mas-liu.lianlian/SynTalker/datasets/hub/smplx_models/", 
             model_type='smplx',
             gender='NEUTRAL_2020', 
             use_face_contour=False,
@@ -115,7 +120,7 @@ class BEATXDataset(data.Dataset):
         #     self.args.training_speakers = [2]
         
         # breakpoint()
-        split_rule = pd.read_csv(self.args.data_path+"train_test_split.csv")
+        split_rule = pd.read_csv("/Dataset/mas-liu.lianlian/beat_v2.0.0/beat_english_v2.0.0/train_test_split.csv")
         self.selected_file = split_rule.loc[
             (split_rule['type'] == loader_type) 
             & (split_rule['id'].str.split("_").str[0].astype(int).isin(self.args.training_speakers))
@@ -158,7 +163,8 @@ class BEATXDataset(data.Dataset):
             # self.args.new_cache = True
         
         # breakpoint()
-        preloaded_dir = self.args.cache_path + loader_type + f"/{self.args.pose_rep}_cache" 
+        preloaded_dir = "/Dataset4D/public/mas-liu.lianlian/output/RAGesture/data/" + loader_type + f"/{self.args.pose_rep}_cache" 
+        print(f"加载数据的地址：{preloaded_dir}")
 
         # if self.args.beat_align: # TODO: Figure out what to do with thuis. 
         #     breakpoint()
@@ -170,9 +176,14 @@ class BEATXDataset(data.Dataset):
         self.name_to_idx = {}
         if build_cache:
             self.build_cache(preloaded_dir)
-        self.lmdb_env = lmdb.open(preloaded_dir, readonly=True, lock=False)
-        with self.lmdb_env.begin() as txn:
+        temp_env = lmdb.open(preloaded_dir, readonly=True, lock=False)
+        with temp_env.begin() as txn:
             self.n_samples = txn.stat()["entries"] 
+
+        temp_env.close() #关闭数据库连接
+
+        self.lmdb_env = None
+        self.lmdb_path = preloaded_dir  # 记下路径
 
         # self.lmdb_names = lmdb.open(preloaded_dir+"_names", readonly=True, lock=False)
         # breakpoint()
@@ -286,7 +297,7 @@ class BEATXDataset(data.Dataset):
         self.logger.info("Creating the dataset cache...")
         if self.args.new_cache:
             # os.remove(self.names_json_path)
-            breakpoint()
+            # breakpoint()
             if os.path.exists(preloaded_dir):
                 shutil.rmtree(preloaded_dir)
                 # shutil.rmtree(preloaded_dir+"_names")
@@ -322,6 +333,7 @@ class BEATXDataset(data.Dataset):
     
         for index, file_name in self.selected_file.iterrows():
             f_name = file_name["id"]
+            print(f"现在在处理的文件名：{ f_name }","blue")
             ext = ".npz" if "smplx" in self.args.pose_rep else ".bvh"
             pose_file = self.data_dir + self.args.pose_rep + "/" + f_name + ext
             pose_each_file = []
@@ -486,8 +498,11 @@ class BEATXDataset(data.Dataset):
                 elif self.args.audio_rep == "wav2vec":
                     from transformers import AutoProcessor, Wav2Vec2Model
 
-                    self.wav2vec2_processor = AutoProcessor.from_pretrained("facebook/wav2vec2-base-960h")
-                    self.wav2vec2_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+                    local_model_path = "/Dataset4D/public/mas-liu.lianlian/pretrained_models/wav2vec2-base-960h"
+
+
+                    self.wav2vec2_processor = AutoProcessor.from_pretrained(local_model_path)
+                    self.wav2vec2_model = Wav2Vec2Model.from_pretrained(local_model_path)
                     self.wav2vec2_model.feature_extractor._freeze_parameters()
                     self.wav2vec2_model = self.wav2vec2_model.cuda()
                     self.wav2vec2_model.eval()
@@ -528,12 +543,15 @@ class BEATXDataset(data.Dataset):
 
                 if self.args.word_rep == "bert" or self.args.word_rep == "bert_framealigned":
                     from transformers import AutoTokenizer, AutoModel
-                    self.bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-cased",
+
+                    local_bert_path = "/Dataset4D/public/mas-liu.lianlian/pretrained_models/bert-base-cased"
+
+                    self.bert_tokenizer = AutoTokenizer.from_pretrained(local_bert_path ,
                                                                         max_length=512,
                                                                         max_position_embeddings=1024,
                                                                         use_fast=True
                                                                         )
-                    self.bert_model = AutoModel.from_pretrained("bert-base-cased", output_hidden_states=True)
+                    self.bert_model = AutoModel.from_pretrained(local_bert_path, output_hidden_states=True)
                     self.bert_model.training = False
                     for p in self.bert_model.parameters():
                         p.requires_grad = False
@@ -820,7 +838,7 @@ class BEATXDataset(data.Dataset):
             if self.args.word_rep is not None:
                 sample_word, sample_textsegs = self.beat_extract_discourse_tokens(word_each_file, textsegs_each_file, start_idx, cut_length)
                 if sample_word == '':
-                    return n_filtered_out
+                    continue 
                 sample_disco = self.beat_extract_discourse_relations(discourse_each_file, start_idx, cut_length)
                 # breakpoint() # check the shape of sample_word
                 if "bert" in self.args.word_rep:
@@ -919,7 +937,7 @@ class BEATXDataset(data.Dataset):
                 sample_semscore_list.append(sample_semscore)
                 sample_trans_list.append(sample_trans)
                 sample_prominence_list.append(sample_prominence)
-
+        
         if len(sample_pose_list) > 0:
             with dst_lmdb_env.begin(write=True) as txn:
                 for smp_idx, (pose, upper, face, lower, hands, audio, audenc, facial, shape, word, word_enc, text_f, disco, textsegs, vid, emo, sem, semscore, trans, prom) in enumerate(zip(
@@ -950,7 +968,8 @@ class BEATXDataset(data.Dataset):
                     # v = [pose, upper, face, lower, hands, audio, audenc, facial, shape, word, word_enc, text_f, "disco", "textsegs", emo, "sem", vid, trans, "prom", f_name]
                     # print(v[-1])
                     # breakpoint()
-                    v = pyarrow.serialize(v).to_buffer()
+                    serialized_bytes = pickle.dumps(v)
+                    v = pyarrow.py_buffer(serialized_bytes)
                     txn.put(k, v)
                     
                     # self.name_list.append(f_name + "/" + str(i))
@@ -1157,10 +1176,20 @@ class BEATXDataset(data.Dataset):
         else:
             key = "{:005}".format(idx).encode("ascii")
 
-
+        # ✅ 3. 懒加载：如果当前进程还没有连数据库，现在连一下
+        if self.lmdb_env is None:
+            self.lmdb_env = lmdb.open(
+                self.lmdb_path, # 用刚才存的路径
+                readonly=True, 
+                lock=False, 
+                readahead=False, 
+                meminit=False
+            )
+            
         with self.lmdb_env.begin(write=False) as txn:
             sample = txn.get(key)
-            sample = pyarrow.deserialize(sample)
+            sample = pickle.loads(sample)
+            # sample = pyarrow.deserialize(sample)
             # tar_pose, in_audio, in_facial, in_shape, in_word, emo, sem, vid, trans = sample
             if len(sample) == 20:
                 tar_pose, tar_upper, tar_face, tar_lower, tar_hands, in_audio, in_audenc, in_facial, in_shape, in_word, in_word_enc, in_textf, disco, textsegs, emo, sem, vid, trans, prom, f_name = sample

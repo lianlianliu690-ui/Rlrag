@@ -4,6 +4,9 @@ import os
 import os.path as osp
 import time
 
+import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
 import mmcv
 import torch
 from mmcv import Config, DictAction
@@ -17,7 +20,7 @@ from mogen.utils import collect_env, get_root_logger
 
 import os
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # 指定程序只在 GPU 3 上运行
 
 
 def parse_args():
@@ -72,9 +75,12 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.options is not None:
         cfg.merge_from_dict(args.options)
+
+
     # set cudnn_benchmark
     if cfg.get("cudnn_benchmark", False):
         torch.backends.cudnn.benchmark = True
+
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
@@ -158,4 +164,12 @@ def main():
 
 
 if __name__ == "__main__":
+    import debugpy
+    try:
+        # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+        debugpy.listen(("localhost", 9504))
+        print("Waiting for debugger attach")
+        debugpy.wait_for_client()
+    except Exception as e:
+      pass
     main()

@@ -186,16 +186,16 @@ class GestureRepEncoder(nn.Module):
         else:
             model.load_state_dict(states['model_state'])
         print(f"load self-pretrained checkpoints for {load_name}")
-
+        #=======将人体运动数据编码为潜在空间表示
     def encode(self, motion_upper, motion_lower, motion_face, motion_hands, motion_transl, motion_facial, motion_contact, motion_mask):
         # check vae device and training/eval condition
         # upper latent
-        bs, n, uj = motion_upper.shape
+        bs, n, uj = motion_upper.shape      #1， xx, xx
         uj = uj // 3
-        motion_upper = rc.axis_angle_to_matrix(motion_upper.reshape(bs, n, uj, 3))
+        motion_upper = rc.axis_angle_to_matrix(motion_upper.reshape(bs, n, uj, 3))  #将轴角表示转换为旋转矩阵，再转换为6D旋转表示
         motion_upper = rc.matrix_to_rotation_6d(motion_upper).reshape(bs, n, uj*6)
-        in_upper = motion_upper
-        z_upper, dist_upper = self.upper_vae.encode_to_dist(in_upper) # bs, n_chunks, dim
+        in_upper = motion_upper     #[1, 150, 78]
+        z_upper, dist_upper = self.upper_vae.encode_to_dist(in_upper) # bs, n_chunks, dim  [1, 10, 512]      通过上半身VAE编码为潜在表示 z_upper
         
         self.uj = uj
         

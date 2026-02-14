@@ -128,7 +128,7 @@ model = dict(
             ff_size=ff_size,
             dropout=dropout,
             lmdb_paths="/scratch/inf0/user/mmughal/DiscourseAwareGesture/retrieval_cache_stratified_spk2/",
-            new_lmdb_cache=False,
+            new_lmdb_cache=False,  # 数据缓存
             stratified_db_creation=True,
             stratification_interval=15, # (max_seq_len // data_stride) // 2) = 150 // 5 // 2 = 15
             ffn_cfg=dict(

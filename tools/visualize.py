@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--use_insertion_guidance", help="whether to use insertion guidance to help the inversion/generation process", action="store_true")
     parser.add_argument("--guidance_iters", help="list of number of iterations at each diffusion timestep to use the guidance", type=str, default="all_one")
     parser.add_argument("--guidance_lr", help="learning rate for the guidance", type=float, default=0.1)
-    parser.add_argument("--test_batchsize", help="batch size for testing", type=int, default=32)
+    parser.add_argument("--test_batchsize", help="batch size for testing", type=int, default=1)
     # parser.add_argument('--pose_npy', help='output pose sequence file', default=None)
     parser.add_argument("--seed", type=int, default=None, help="random seed")
     parser.add_argument(
@@ -168,6 +168,7 @@ def main():
     for i, data in enumerate(test_dataloader):
         
         gt_text = data["raw_word"]
+        print(data["motion"].shape)
 
         gt_audio = data["raw_audio"].numpy()
 
@@ -547,4 +548,12 @@ def main():
             )
 
 if __name__ == "__main__":
+    import debugpy
+    try:
+        # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+        debugpy.listen(("localhost", 9502))
+        print("Waiting for debugger attach")
+        debugpy.wait_for_client()
+    except Exception as e:
+      pass
     main()
